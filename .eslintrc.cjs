@@ -10,7 +10,4 @@ module.exports = {
     "plugin:prettier/recommended",
   ],
   ignorePatterns: ["dist", "node_modules", "target", "*.css", "*.json"],
-  rules: {
-    "linebreak-style": ["error", "windows"],
-  },
 };
