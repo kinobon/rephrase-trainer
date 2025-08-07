@@ -1,4 +1,5 @@
 import { createSignal, onMount, For } from "solid-js";
+import { generateExample, generateFeedback } from "../utils/api";
 
 /**
  * RephraseTrainer.tsx (full‑screen UI)
@@ -56,6 +57,7 @@ export default function RephraseTrainer() {
   const [loading, setLoading] = createSignal<boolean>(false);
   const [modelAnswer, setModelAnswer] = createSignal<string>("");
   const [feedback, setFeedback] = createSignal<string>("");
+  const [error, setError] = createSignal<string>("");
 
   // ------- conversation history -------
   const [conversations, setConversations] = createSignal<
@@ -70,35 +72,71 @@ export default function RephraseTrainer() {
     setAnswer("");
     setModelAnswer("");
     setFeedback("");
+    setError("");
     setCurrentStep("input");
   };
 
   const evaluate = async () => {
     if (!answer().trim()) return;
+
+    const currentApiKey = apiKey();
+    const currentModel = model();
+
+    if (!currentApiKey.trim()) {
+      setError("APIキーが設定されていません。設定から入力してください。");
+      return;
+    }
+
     setLoading(true);
     setCurrentStep("evaluating");
+    setError("");
 
-    // TODO: Replace with real LLM call using apiKey() & model()
-    await new Promise((r) => setTimeout(r, 2000));
+    try {
+      // Generate example answer
+      const exampleAnswer = await generateExample(
+        currentApiKey,
+        currentModel,
+        topic(),
+        mode().value
+      );
 
-    const newModelAnswer = `✨ 模範例: "${topic()}"を${mode().value}で表現すると...\n\n例えば「${topic() === "cucumber" ? "緑色の細長い野菜で、サラダによく使われる水分豊富な食材" : "重力とは、物体が地球に引き寄せられる見えない力のこと"}」のような表現が考えられます。`;
-    const newFeedback = `💬 フィードバック:\n\nあなたの回答「${answer()}」について：\n✅ 良い点: 基本的な説明ができています\n🔧 改善案: より具体的な特徴や例を加えると、さらに分かりやすくなります！`;
+      // Generate feedback
+      const feedbackText = await generateFeedback(
+        currentApiKey,
+        currentModel,
+        topic(),
+        mode().value,
+        answer(),
+        exampleAnswer
+      );
 
-    setModelAnswer(newModelAnswer);
-    setFeedback(newFeedback);
+      const newModelAnswer = `✨ 模範例:\n\n${exampleAnswer}`;
+      const newFeedback = `💬 フィードバック:\n\n${feedbackText}`;
 
-    // Add to conversation history
-    setConversations((prev) => [
-      ...prev,
-      {
-        user: answer(),
-        assistant: newModelAnswer,
-        feedback: newFeedback,
-      },
-    ]);
+      setModelAnswer(newModelAnswer);
+      setFeedback(newFeedback);
 
-    setCurrentStep("feedback");
-    setLoading(false);
+      // Add to conversation history
+      setConversations((prev) => [
+        ...prev,
+        {
+          user: answer(),
+          assistant: newModelAnswer,
+          feedback: newFeedback,
+        },
+      ]);
+
+      setCurrentStep("feedback");
+    } catch (err) {
+      console.error("API Error:", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "APIエラーが発生しました。LM Studioが起動しているか確認してください。"
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   onMount(pickRandomTopic);
@@ -194,6 +232,13 @@ export default function RephraseTrainer() {
                   onInput={(e) => setAnswer(e.currentTarget.value)}
                 />
               </div>
+
+              {/* Error Display */}
+              {error() && (
+                <div class="alert alert-error">
+                  <span>⚠️ {error()}</span>
+                </div>
+              )}
 
               {/* Action Button */}
               <div class="card-actions mt-6 justify-end">
